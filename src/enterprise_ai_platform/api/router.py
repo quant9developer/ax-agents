@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from enterprise_ai_platform.api.v1.a2a import router as a2a_router
 from enterprise_ai_platform.api.v1.agents import router as agents_router
 from enterprise_ai_platform.api.v1.capabilities import router as capabilities_router
 from enterprise_ai_platform.api.v1.demo import router as demo_router
@@ -11,6 +12,7 @@ from enterprise_ai_platform.api.v1.tools import router as tools_router
 router = APIRouter(prefix="/v1")
 router.include_router(health_router)
 router.include_router(demo_router)
+router.include_router(a2a_router)
 router.include_router(capabilities_router)
 router.include_router(agents_router)
 router.include_router(tasks_router)

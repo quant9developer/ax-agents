@@ -194,11 +194,11 @@ DEMO_HTML = """<!doctype html>
       color: var(--muted);
     }
 
-    input, textarea, button {
+    input, textarea, button, select {
       font: inherit;
     }
 
-    input, textarea {
+    input, textarea, select {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 16px;
@@ -261,6 +261,29 @@ DEMO_HTML = """<!doctype html>
       background: rgba(255, 255, 255, 0.42);
     }
 
+    .sources {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .source-item {
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.62);
+    }
+
+    .source-item a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .source-item a:hover {
+      text-decoration: underline;
+    }
+
     details {
       margin-top: 16px;
     }
@@ -315,6 +338,18 @@ DEMO_HTML = """<!doctype html>
         <div class="eyebrow">LLM 상태</div>
         <div id="providerBadge" class="provider-chip"><span class="dot"></span><span>제공자 정보를 불러오는 중</span></div>
         <div id="providerMeta" class="subtle" style="margin-top:12px;">제공자 설정을 확인하는 중입니다.</div>
+        <div id="mcpMeta" class="subtle" style="margin-top:12px;">MCP 상태를 확인하는 중입니다.</div>
+        <label style="margin-top:12px;">
+          MCP 테스트 대상
+          <select id="mcpServerSelect">
+            <option value="browser">browser.search</option>
+            <option value="filesystem">filesystem.read_text</option>
+          </select>
+        </label>
+        <div class="button-row" style="margin-top:12px;">
+          <button id="testMcpButton" class="secondary" type="button">MCP 연결 테스트</button>
+        </div>
+        <div id="mcpTestMeta" class="subtle" style="margin-top:12px;">선택한 MCP 서버 경로를 테스트합니다.</div>
         <div class="subtle" style="margin-top:12px;">이 데모는 OpenAI, Claude, Gemini, 또는 OpenAI 호환 오픈소스 모델 서버에 연결될 수 있습니다.</div>
       </div>
     </section>
@@ -347,6 +382,10 @@ DEMO_HTML = """<!doctype html>
         </div>
         <div id="resultMeta" class="subtle" style="margin-top:14px;">시나리오를 선택한 뒤 실행하면 결과가 표시됩니다.</div>
         <pre id="resultOutput" class="empty" style="margin-top:12px;">아직 실행된 결과가 없습니다.</pre>
+        <div id="sourceSection" style="display:none; margin-top:14px;">
+          <div class="subtle">리서치 출처</div>
+          <div id="sourceList" class="sources"></div>
+        </div>
       </div>
 
       <div class="card">
@@ -404,9 +443,14 @@ DEMO_HTML = """<!doctype html>
     const apiKeyInput = document.getElementById("apiKey");
     const providerBadge = document.getElementById("providerBadge");
     const providerMeta = document.getElementById("providerMeta");
+    const mcpMeta = document.getElementById("mcpMeta");
+    const mcpServerSelect = document.getElementById("mcpServerSelect");
+    const mcpTestMeta = document.getElementById("mcpTestMeta");
     const resultStatus = document.getElementById("resultStatus");
     const resultMeta = document.getElementById("resultMeta");
     const resultOutput = document.getElementById("resultOutput");
+    const sourceSection = document.getElementById("sourceSection");
+    const sourceList = document.getElementById("sourceList");
     const workflowMeta = document.getElementById("workflowMeta");
     const workflowOutput = document.getElementById("workflowOutput");
     const registryMeta = document.getElementById("registryMeta");
@@ -418,10 +462,12 @@ DEMO_HTML = """<!doctype html>
     const runWorkflowButton = document.getElementById("runWorkflowButton");
     const refreshButton = document.getElementById("refreshButton");
     const previewGraphButton = document.getElementById("previewGraphButton");
+    const testMcpButton = document.getElementById("testMcpButton");
 
     let scenarios = [];
     let workflows = [];
     let capabilities = [];
+    let protocols = {};
 
     function setStatus(label, accent = "#1f6a5e") {
       resultStatus.innerHTML = `<span class="dot" style="background:${accent}; box-shadow:0 0 0 6px ${accent}22;"></span><span>${label}</span>`;
@@ -430,6 +476,29 @@ DEMO_HTML = """<!doctype html>
     function setOutput(target, text) {
       target.classList.remove("empty");
       target.textContent = text;
+    }
+
+    function renderSources(sources) {
+      if (!Array.isArray(sources) || !sources.length) {
+        sourceSection.style.display = "none";
+        sourceList.innerHTML = "";
+        return;
+      }
+      sourceSection.style.display = "block";
+      sourceList.innerHTML = "";
+      sources.forEach((source, index) => {
+        const item = document.createElement("div");
+        item.className = "source-item";
+        const title = source.title || `출처 ${index + 1}`;
+        const url = source.url || "";
+        const snippet = source.snippet || "";
+        item.innerHTML = `
+          <div><a href="${url}" target="_blank" rel="noreferrer">${title}</a></div>
+          <div class="mono" style="margin-top:6px;">${url}</div>
+          <div class="subtle" style="margin-top:8px;">${snippet}</div>
+        `;
+        sourceList.appendChild(item);
+      });
     }
 
     function samplePayloadForCapability(capability) {
@@ -458,6 +527,21 @@ DEMO_HTML = """<!doctype html>
     function renderScenarioCards(items) {
       scenarioList.innerHTML = "";
       items.forEach((scenario, index) => {
+        const detail = scenario.capability === "deep_research"
+          ? (
+              protocols.mcp && protocols.mcp.status
+                ? (
+                    protocols.mcp.status.reachable
+                      ? `MCP 활성: ${protocols.mcp.status.reachable_servers.join(", ")} 서버를 통해 근거를 수집합니다.`
+                      : (
+                          protocols.mcp.status.configured
+                            ? "MCP 서버가 설정되어 있지만 현재 연결되지 않습니다. 로컬 근거로 대체 실행됩니다."
+                            : "MCP 서버가 설정되지 않았습니다. 로컬 근거로 대체 실행됩니다."
+                        )
+                  )
+                : "MCP 상태를 확인하는 중입니다."
+            )
+          : "선택 후 즉시 실행 가능한 단일 capability 예시입니다.";
         const card = document.createElement("button");
         card.type = "button";
         card.className = "pick";
@@ -468,6 +552,7 @@ DEMO_HTML = """<!doctype html>
             <span class="tag">${scenario.capability}</span>
           </div>
           <div class="mono">${scenario.id}</div>
+          <div class="subtle" style="margin-top:8px;">${detail}</div>
         `;
         card.addEventListener("click", () => selectScenario(scenario.id));
         if (index === 0) {
@@ -537,8 +622,9 @@ DEMO_HTML = """<!doctype html>
     }
 
     async function refreshCatalog() {
-      const [providerData, capabilityData, scenarioData, workflowData] = await Promise.all([
+      const [providerData, protocolData, capabilityData, scenarioData, workflowData] = await Promise.all([
         fetchJSON("/v1/demo/providers"),
+        fetchJSON("/v1/demo/protocols"),
         fetchJSON("/v1/capabilities"),
         fetchJSON("/v1/demo/scenarios"),
         fetchJSON("/v1/demo/workflows")
@@ -547,6 +633,17 @@ DEMO_HTML = """<!doctype html>
       const llm = providerData.llm;
       providerBadge.innerHTML = `<span class="dot"></span><span>${llm.provider} / ${llm.model}</span>`;
       providerMeta.textContent = `Base URL: ${llm.base_url || "n/a"} | 실사용 백엔드: ${llm.live} | API 키 설정 여부: ${llm.api_key_configured}`;
+      protocols = protocolData || {};
+      const mcpStatus = protocols.mcp && protocols.mcp.status ? protocols.mcp.status : null;
+      if (!mcpStatus || !protocols.mcp.enabled) {
+        mcpMeta.textContent = "MCP 커넥터가 등록되지 않았습니다.";
+      } else if (!mcpStatus.configured) {
+        mcpMeta.textContent = "MCP 서버가 설정되지 않았습니다. 심층 리서치는 로컬 근거로만 실행됩니다.";
+      } else if (!mcpStatus.reachable) {
+        mcpMeta.textContent = `MCP 서버 연결 실패: ${mcpStatus.servers.map((item) => `${item.name}(${item.detail})`).join(", ")}`;
+      } else {
+        mcpMeta.textContent = `MCP 활성: ${mcpStatus.reachable_servers.join(", ")} 서버에 연결되었습니다.`;
+      }
 
       capabilities = capabilityData.capabilities || [];
       scenarios = scenarioData.scenarios || [];
@@ -610,6 +707,7 @@ DEMO_HTML = """<!doctype html>
       setStatus("실행 중", "#d07a32");
       resultMeta.textContent = "선택한 capability를 실행하고 있습니다.";
       setOutput(resultOutput, "선택한 에이전트를 실행 중입니다. 응답을 기다리는 중입니다...");
+      renderSources([]);
       setOutput(traceOutput, "실행이 끝나면 트레이스가 여기에 표시됩니다.");
       try {
         const body = await fetchJSON("/v1/agents/execute", {
@@ -628,11 +726,13 @@ DEMO_HTML = """<!doctype html>
         setStatus(body.status === "completed" ? "완료" : (body.status || "완료"), body.status === "completed" ? "#1f6a5e" : "#b53f1d");
         resultMeta.textContent = `에이전트: ${body.agent_id} | 실행 시간: ${body.duration_ms ?? "n/a"} ms`;
         setOutput(resultOutput, JSON.stringify(body.output || body.error || body, null, 2));
+        renderSources((body.output && body.output.sources) || []);
         setOutput(traceOutput, traceLines.length ? traceLines.join("\\n") : "반환된 트레이스가 없습니다.");
       } catch (error) {
         setStatus("실패", "#b53f1d");
         resultMeta.textContent = "실행이 실패했습니다.";
         setOutput(resultOutput, String(error));
+        renderSources([]);
         setOutput(traceOutput, "표시할 트레이스가 없습니다.");
       }
     }
@@ -661,15 +761,42 @@ DEMO_HTML = """<!doctype html>
       }
     }
 
+    async function testMcp() {
+      const server = mcpServerSelect.value || "browser";
+      mcpTestMeta.textContent = `MCP ${server} 경로를 테스트하는 중입니다.`;
+      testMcpButton.disabled = true;
+      try {
+        const payload = server === "filesystem"
+          ? { server: "filesystem", tool: "read_text", path: "examples/demo/quarterly_update_ko.txt" }
+          : { server: "browser", tool: "search", query: "ai agents", limit: 2 };
+        const body = await fetchJSON("/v1/demo/mcp/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const status = body.status || {};
+        const suffix = status.reachable
+          ? ` | 연결된 서버: ${(status.reachable_servers || []).join(", ")}`
+          : "";
+        mcpTestMeta.textContent = `${body.message || "MCP 테스트 완료"}${suffix}`;
+      } catch (error) {
+        mcpTestMeta.textContent = `MCP 테스트 실패: ${String(error)}`;
+      } finally {
+        testMcpButton.disabled = false;
+      }
+    }
+
     runButton.addEventListener("click", runAgent);
     runWorkflowButton.addEventListener("click", runWorkflow);
     refreshButton.addEventListener("click", refreshCatalog);
     previewGraphButton.addEventListener("click", previewGraph);
+    testMcpButton.addEventListener("click", testMcp);
 
     refreshCatalog().catch((error) => {
       setStatus("로딩 실패", "#b53f1d");
       setOutput(resultOutput, String(error));
       resultMeta.textContent = "데모 메타데이터를 불러오지 못했습니다.";
+      mcpTestMeta.textContent = "MCP 테스트를 실행할 수 없습니다.";
     });
   </script>
 </body>

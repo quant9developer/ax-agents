@@ -44,6 +44,7 @@ STOPWORDS = {
     "were",
     "with",
 }
+HANGUL_RE = re.compile(r"[\uac00-\ud7a3]")
 
 
 class JSONEchoAgent(BaseAgent):
@@ -191,6 +192,15 @@ def unique_preserve_order(values: Iterable[str]) -> list[str]:
             seen.add(value)
             output.append(value)
     return output
+
+
+def infer_output_language(*texts: str, requested: str | None = None, default: str = "en") -> str:
+    normalized_requested = (requested or "").strip().lower()
+    if normalized_requested:
+        return normalized_requested
+    if any(HANGUL_RE.search(text or "") for text in texts):
+        return "ko"
+    return default
 
 
 def llm_enabled(context: AgentContext) -> bool:

@@ -6,8 +6,10 @@ from enterprise_ai_platform import agents  # noqa: F401
 from enterprise_ai_platform.agents import unit  # noqa: F401
 from enterprise_ai_platform.config import get_settings
 from enterprise_ai_platform.core.agent_context import AgentContext
+from enterprise_ai_platform.core.a2a import A2AService
 from enterprise_ai_platform.core.capability_graph import CapabilityGraph
 from enterprise_ai_platform.core.capability_registry import CapabilityRegistry
+from enterprise_ai_platform.core.event_bus import EventBus
 from enterprise_ai_platform.core.llm_client import LLMClient
 from enterprise_ai_platform.core.orchestrator import Orchestrator
 from enterprise_ai_platform.core.tool_manager import ToolManager
@@ -31,7 +33,7 @@ def get_tool_manager() -> ToolManager:
     manager = ToolManager()
     manager.register(DatabaseTool())
     manager.register(FileSystemTool())
-    manager.register(MCPConnector())
+    manager.register(MCPConnector(get_settings()))
     return manager
 
 
@@ -55,6 +57,11 @@ def get_agent_service() -> AgentService:
 
 
 @lru_cache(maxsize=1)
+def get_event_bus() -> EventBus:
+    return EventBus()
+
+
+@lru_cache(maxsize=1)
 def get_task_service() -> TaskService:
     graph = CapabilityGraph(registry=CapabilityRegistry, llm=get_llm_client())
     orchestrator = Orchestrator(registry=CapabilityRegistry, context_factory=build_context)
@@ -64,3 +71,8 @@ def get_task_service() -> TaskService:
 @lru_cache(maxsize=1)
 def get_knowledge_service() -> KnowledgeService:
     return KnowledgeService(get_vector_store())
+
+
+@lru_cache(maxsize=1)
+def get_a2a_service() -> A2AService:
+    return A2AService(agent_service=get_agent_service(), event_bus=get_event_bus())

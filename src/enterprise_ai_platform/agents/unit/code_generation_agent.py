@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enterprise_ai_platform.agents.unit.common import JSONEchoAgent, trace, try_complete_json
+from enterprise_ai_platform.agents.unit.common import JSONEchoAgent, infer_output_language, trace, try_complete_json
 from enterprise_ai_platform.core.agent_context import AgentContext
 from enterprise_ai_platform.core.capability_registry import CapabilityRegistry
 from enterprise_ai_platform.models.domain import AgentCategory, TaskInput
@@ -18,15 +18,21 @@ class CodeGenerationAgent(JSONEchoAgent):
         requirement = str(task.payload.get("requirement", ""))
         language = str(task.payload.get("language", "python"))
         framework = str(task.payload.get("framework", "")).strip()
+        output_language = infer_output_language(
+            requirement,
+            framework,
+            requested=str(task.payload.get("output_language", "")),
+        )
         llm_result = await try_complete_json(
             context,
             system_prompt=(
                 "You generate minimal production-minded code. Return JSON only with keys "
-                "language, code, explanation, dependencies, and test_code."
+                "language, code, explanation, dependencies, and test_code. "
+                f"Write explanatory fields in {output_language}. Keep code in the requested programming language."
             ),
             user_prompt=(
                 f"Requirement: {requirement}\nLanguage: {language}\nFramework: {framework or 'none'}\n"
-                "Return a compact, runnable implementation."
+                f"Return a compact, runnable implementation. Output language: {output_language}."
             ),
             schema={
                 "type": "object",
@@ -74,7 +80,11 @@ class CodeGenerationAgent(JSONEchoAgent):
         return {
             "language": language,
             "code": code,
-            "explanation": f"Generated a minimal {language} implementation from the requirement.",
+            "explanation": (
+                f"요구사항을 바탕으로 최소한의 {language} 구현을 생성했습니다."
+                if output_language == "ko"
+                else f"Generated a minimal {language} implementation from the requirement."
+            ),
             "dependencies": dependencies,
             "test_code": test_code,
         }

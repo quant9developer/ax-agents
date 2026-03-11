@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = "./data/chroma"
     pinecone_api_key: str = ""
     pinecone_index: str = ""
+    mcp_servers: dict[str, str] = Field(default_factory=dict)
 
     embedding_model: str = "text-embedding-3-small"
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enterprise_ai_platform.tools.base_tool import BaseTool
+from enterprise_ai_platform.models.domain import ToolDescriptor
 
 
 class ToolManager:
@@ -15,3 +16,9 @@ class ToolManager:
 
     def list_tools(self) -> list[str]:
         return sorted(self._tools.keys())
+
+    def has_tool(self, tool_id: str) -> bool:
+        return tool_id in self._tools
+
+    def descriptors(self) -> list[ToolDescriptor]:
+        return [self._tools[tool_id].descriptor() for tool_id in self.list_tools()]
