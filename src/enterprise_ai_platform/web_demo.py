@@ -361,7 +361,10 @@ DEMO_HTML = """<!doctype html>
           <div id="resultStatus" class="status"><span class="dot"></span><span>대기 중</span></div>
         </div>
         <div class="subtle">하나의 capability를 선택해 즉시 실행합니다.</div>
+        <div class="subtle" style="margin-top:14px;">빠른 시나리오</div>
         <div id="scenarioList" class="stack" style="margin-top:14px;"></div>
+        <div class="subtle" style="margin-top:16px;">전체 capability 선택</div>
+        <div id="mainCapabilityList" class="stack" style="margin-top:14px; max-height:320px; overflow:auto;"></div>
         <div class="controls">
           <label>
             API 키
@@ -436,6 +439,7 @@ DEMO_HTML = """<!doctype html>
 
   <script>
     const scenarioList = document.getElementById("scenarioList");
+    const mainCapabilityList = document.getElementById("mainCapabilityList");
     const workflowList = document.getElementById("workflowList");
     const capabilityList = document.getElementById("capabilityList");
     const capabilityInput = document.getElementById("capabilityInput");
@@ -601,13 +605,44 @@ DEMO_HTML = """<!doctype html>
       });
     }
 
+    function renderMainCapabilities(items) {
+      mainCapabilityList.innerHTML = "";
+      items.forEach((item) => {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "pick";
+        card.dataset.mainCapability = item.name;
+        card.innerHTML = `
+          <div class="row-top">
+            <strong>${item.name}</strong>
+            <span class="tag">${item.category}</span>
+          </div>
+          <div class="subtle">${item.description}</div>
+          <div class="mono" style="margin-top:8px;">${item.agent_id}</div>
+        `;
+        card.addEventListener("click", () => selectCapability(item.name));
+        mainCapabilityList.appendChild(card);
+      });
+    }
+
+    function selectCapability(name) {
+      const capability = capabilities.find((item) => item.name === name);
+      if (!capability) return;
+      document.querySelectorAll("[data-main-capability]").forEach((node) => node.classList.remove("active"));
+      const active = document.querySelector(`[data-main-capability="${name}"]`);
+      if (active) active.classList.add("active");
+      capabilityInput.value = name;
+      payloadInput.value = JSON.stringify(samplePayloadForCapability(name), null, 2);
+      resultMeta.textContent = `선택된 capability: ${name}`;
+    }
+
     function selectScenario(id) {
       const scenario = scenarios.find((item) => item.id === id);
       if (!scenario) return;
       document.querySelectorAll("[data-scenario]").forEach((node) => node.classList.remove("active"));
       const active = document.querySelector(`[data-scenario="${id}"]`);
       if (active) active.classList.add("active");
-      capabilityInput.value = scenario.request.capability;
+      selectCapability(scenario.request.capability);
       payloadInput.value = JSON.stringify(scenario.request.payload, null, 2);
       graphMeta.textContent = `입력 요청: ${scenario.title}`;
     }
@@ -650,6 +685,7 @@ DEMO_HTML = """<!doctype html>
       workflows = workflowData.workflows || [];
 
       renderCapabilities(capabilities);
+      renderMainCapabilities(capabilities);
       renderScenarioCards(scenarios);
       renderWorkflowCards(workflows);
 
@@ -669,6 +705,8 @@ DEMO_HTML = """<!doctype html>
 
       if (scenarios.length) {
         selectScenario(scenarios[0].id);
+      } else if (capabilities.length) {
+        selectCapability(capabilities[0].name);
       }
       if (workflows.length) {
         selectWorkflow(workflows[0].id);

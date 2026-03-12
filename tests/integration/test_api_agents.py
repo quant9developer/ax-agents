@@ -63,6 +63,7 @@ def test_demo_html_response_contains_console() -> None:
 
     assert response.status_code == 200
     assert "단일 작업 실행" in html
+    assert "전체 capability 선택" in html
     assert "리서치 출처" in html
     assert "MCP 테스트 대상" in html
 
